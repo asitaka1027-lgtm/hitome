@@ -26,6 +26,8 @@ LINE公式アカウント・Google口コミを一元管理し、AI自動対応�
 
 **Preview URL**: https://d9dcaa64.hitome.pages.dev
 
+**GitHubリポジトリ**: https://github.com/asitaka1027-lgtm/hitome
+
 ---
 
 ## 🚀 起動方法
