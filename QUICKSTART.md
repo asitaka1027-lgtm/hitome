@@ -1,7 +1,9 @@
 # hitome クイックスタートガイド
 
 ## 🎯 デモURL
-https://3000-iw5a9q31jrezxpq6uvinr-5634da27.sandbox.novita.ai
+**本番URL**: https://hitome.pages.dev
+
+**プレビューURL**: https://d9dcaa64.hitome.pages.dev
 
 ## 📱 操作の流れ
 

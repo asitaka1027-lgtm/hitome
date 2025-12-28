@@ -22,7 +22,9 @@ LINE公式アカウント・Google口コミを一元管理し、AI自動対応�
 
 ## 🌐 デモURL
 
-**本番URL**: https://3000-iw5a9q31jrezxpq6uvinr-5634da27.sandbox.novita.ai
+**本番URL（Cloudflare Pages）**: https://hitome.pages.dev
+
+**Preview URL**: https://d9dcaa64.hitome.pages.dev
 
 ---
 
@@ -40,19 +42,19 @@ cd /home/user/webapp
 # 依存関係をインストール
 npm install
 
-# 開発サーバーを起動（PM2）
-pm2 start ecosystem.config.cjs
+# 開発サーバーを起動
+npm run dev
 
-# ビルド（本番用）
+# ビルド（静的エクスポート）
 npm run build
 
-# 本番サーバー起動
-npm start
+# Cloudflare Pagesにデプロイ
+npx wrangler pages deploy out --project-name hitome
 ```
 
-### ポート
-- 開発: `http://localhost:3000`
-- PM2で管理されるバックグラウンド実行
+### ローカル開発
+- 開発: `npm run dev` → `http://localhost:3000`
+- ビルド: `npm run build` → `out/` ディレクトリに静的ファイル生成
 
 ---
 
@@ -309,23 +311,32 @@ webapp/
 
 ## 📖 デプロイメモ
 
+### ✅ Cloudflare Pages（本番環境）
+```bash
+# ビルド
+npm run build
+
+# デプロイ
+npx wrangler pages deploy out --project-name hitome
+
+# URL確認
+# 本番: https://hitome.pages.dev
+# Preview: https://[hash].hitome.pages.dev
+```
+
+**デプロイ済みURL**:
+- 🌐 **本番**: https://hitome.pages.dev
+- 🔍 **プレビュー**: https://d9dcaa64.hitome.pages.dev
+
+**Cloudflare Pages 無料枠**:
+- 無制限リクエスト
+- グローバルCDN
+- 自動HTTPS
+- 500ビルド/月
+
 ### ローカル開発
 ```bash
 npm run dev  # http://localhost:3000
-```
-
-### 本番ビルド
-```bash
-npm run build
-npm start
-```
-
-### PM2管理
-```bash
-pm2 start ecosystem.config.cjs
-pm2 logs hitome --nostream
-pm2 restart hitome
-pm2 delete hitome
 ```
 
 ---
