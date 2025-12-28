@@ -1,10 +1,9 @@
-// Cloudflare Pages Function for LINE Webhook with D1 integration
+// Cloudflare Pages Function for LINE Webhook with Multi-Tenancy Support
 // https://hitome.pages.dev/api/webhook/line
 
+import { getStore } from '../../../app/lib/auth';
+
 interface Env {
-  LINE_CHANNEL_ID: string;
-  LINE_CHANNEL_SECRET: string;
-  LINE_CHANNEL_ACCESS_TOKEN: string;
   DB: D1Database;
 }
 
@@ -24,7 +23,7 @@ interface LINEMessageEvent {
 }
 
 interface LINEWebhookBody {
-  destination: string;
+  destination: string; // This is the LINE channel ID
   events: LINEMessageEvent[];
 }
 
@@ -88,9 +87,18 @@ async function getUserProfile(userId: string, accessToken: string): Promise<stri
   }
 }
 
-// Check danger words
-function hasDangerWords(text: string): boolean {
-  const dangerWords = ['食中毒', '警察', '訴える', '返金', '炎上', '詐欺', '弁護士', '訴訟', '被害', '通報'];
+// Check danger words from database
+async function hasDangerWords(db: D1Database, text: string, storeId: string): Promise<boolean> {
+  // Get danger words for this store and global
+  const result = await db
+    .prepare(`
+      SELECT word FROM danger_words 
+      WHERE (store_id = ? OR store_id IS NULL) AND is_active = 1
+    `)
+    .bind(storeId)
+    .all();
+  
+  const dangerWords = (result.results || []).map((r: any) => r.word);
   return dangerWords.some(word => text.includes(word));
 }
 
@@ -98,104 +106,214 @@ function hasDangerWords(text: string): boolean {
 function extractTags(text: string): string[] {
   const tags: string[] = [];
   
-  if (text.includes('予約')) tags.push('reservation');
-  if (text.includes('営業時間') || text.includes('何時')) tags.push('hours');
-  if (text.includes('場所') || text.includes('住所')) tags.push('location');
-  if (text.includes('駐車')) tags.push('parking');
-  if (text.includes('メニュー') || text.includes('料金')) tags.push('menu');
-  if (hasDangerWords(text)) tags.push('danger');
+  if (text.match(/営業|時間|何時/)) tags.push('hours');
+  if (text.match(/場所|アクセス|どこ|住所/)) tags.push('location');
+  if (text.match(/駐車|車|パーキング/)) tags.push('parking');
+  if (text.match(/予約|空き|取りたい/)) tags.push('reservation');
+  if (text.match(/料金|価格|いくら|値段/)) tags.push('price');
+  if (text.match(/メニュー|コース|内容/)) tags.push('menu');
   
-  return tags.length > 0 ? tags : ['question'];
+  return tags;
 }
 
 // Generate AI summary
-function generateSummary(text: string): string {
-  if (hasDangerWords(text)) return 'クレーム疑い。慎重な対応が必要です。';
-  if (text.includes('予約')) return '予約の問い合わせ。日時・人数の確認が必要';
-  if (text.includes('営業時間')) return '営業時間についての質問';
-  if (text.includes('場所')) return '店舗の場所・アクセスについての質問';
-  return '一般的な問い合わせ。内容確認が必要';
-}
-
-// Generate AI intent
-function generateIntent(text: string): string {
-  if (hasDangerWords(text)) return 'クレーム疑い';
-  if (text.includes('予約')) return '予約希望';
-  if (text.includes('営業時間')) return '営業時間の質問';
-  if (text.includes('場所')) return '場所の質問';
-  return '一般質問';
+function generateAISummary(text: string): string {
+  if (text.match(/営業|時間/)) return '営業時間についての質問';
+  if (text.match(/場所|アクセス/)) return 'アクセス方法についての質問';
+  if (text.match(/予約/)) return '予約希望';
+  if (text.match(/料金|価格/)) return '料金についての質問';
+  return 'お問い合わせ';
 }
 
 // Generate AI response
-function generateResponse(text: string): string {
-  const textLower = text.toLowerCase();
-  
-  // Danger words - no auto reply
-  if (hasDangerWords(text)) return '';
-  
-  // Pattern matching
-  if (text.includes('予約')) {
-    return 'ご予約ありがとうございます。ご希望の日時、人数、メニューを教えてください。';
+function generateAIResponse(text: string, businessHours: string): string {
+  if (text.match(/営業|時間/)) {
+    return `お問い合わせありがとうございます。営業時間は${businessHours}です。`;
   }
-  if (text.includes('営業時間')) {
-    return 'お問い合わせありがとうございます。営業時間は09:00〜21:00です。';
+  if (text.match(/場所|アクセス/)) {
+    return 'お問い合わせありがとうございます。詳しいアクセス方法をお送りいたします。';
   }
-  if (text.includes('場所') || text.includes('住所')) {
-    return '店舗の場所はプロフィール欄をご確認ください。';
+  if (text.match(/駐車/)) {
+    return 'お問い合わせありがとうございます。駐車場についてご案内いたします。';
   }
-  if (text.includes('駐車場')) {
-    return '駐車場についてはお気軽にお問い合わせください。';
+  if (text.match(/予約/)) {
+    return 'ご予約ありがとうございます。詳細を確認させていただきます。';
   }
   
-  return 'お問い合わせありがとうございます。詳しい内容を教えてください。';
+  return 'お問い合わせありがとうございます。担当者が確認いたします。';
 }
 
-// Generate unique ID
-function generateId(): string {
-  return `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+// Check if should auto reply
+function shouldAutoReply(text: string): boolean {
+  // Auto reply for common questions
+  const autoReplyPatterns = [
+    /営業|時間/,
+    /場所|アクセス/,
+    /駐車/,
+  ];
+  
+  // No auto reply for sensitive topics
+  const noAutoReplyPatterns = [
+    /料金|価格|いくら/,
+    /クレーム|苦情/,
+    /診断|治療|薬/,
+  ];
+  
+  if (noAutoReplyPatterns.some(p => p.test(text))) return false;
+  return autoReplyPatterns.some(p => p.test(text));
 }
 
-// POST handler
-export const onRequestPost: PagesFunction<Env> = async (context) => {
+export async function onRequest(context: { request: Request; env: Env }) {
+  const { request, env } = context;
+  
+  // Handle GET (verification)
+  if (request.method === 'GET') {
+    return new Response(
+      JSON.stringify({ 
+        status: 'ok',
+        message: 'LINE Webhook endpoint with Multi-Tenancy'
+      }),
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  // Handle POST (webhook)
   try {
-    const { request, env } = context;
-    
-    // Validate configuration
-    if (!env.LINE_CHANNEL_SECRET || !env.LINE_CHANNEL_ACCESS_TOKEN || !env.DB) {
-      return new Response(JSON.stringify({ error: 'Not configured' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-    
-    // Get signature
-    const signature = request.headers.get('x-line-signature');
-    if (!signature) {
-      return new Response(JSON.stringify({ error: 'No signature' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-    
-    // Get body
     const bodyText = await request.text();
-    
-    // Verify signature
-    const isValid = await verifySignature(bodyText, signature, env.LINE_CHANNEL_SECRET);
-    if (!isValid) {
-      return new Response(JSON.stringify({ error: 'Invalid signature' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-    
-    // Parse webhook
     const body: LINEWebhookBody = JSON.parse(bodyText);
     
-    // Process events
+    // Get destination (LINE Channel ID)
+    const channelId = body.destination;
+    
+    if (!channelId) {
+      return new Response(JSON.stringify({ error: 'No channel ID' }), { status: 400 });
+    }
+    
+    // Find store by LINE channel ID
+    const storeResult = await env.DB
+      .prepare('SELECT * FROM stores WHERE line_channel_id = ? AND is_active = 1')
+      .bind(channelId)
+      .first();
+    
+    if (!storeResult) {
+      console.error('Store not found for channel:', channelId);
+      return new Response(
+        JSON.stringify({ error: 'Store not configured' }),
+        { status: 404 }
+      );
+    }
+    
+    const store = {
+      id: storeResult.id as string,
+      name: storeResult.name as string,
+      businessHours: storeResult.business_hours as string,
+      lineChannelSecret: storeResult.line_channel_secret as string,
+      lineAccessToken: storeResult.line_access_token as string,
+      autoReplyEnabled: Boolean(storeResult.auto_reply_enabled),
+    };
+    
+    // Verify signature
+    const signature = request.headers.get('x-line-signature');
+    if (!signature) {
+      return new Response(JSON.stringify({ error: 'No signature' }), { status: 400 });
+    }
+    
+    const isValid = await verifySignature(bodyText, signature, store.lineChannelSecret);
+    if (!isValid) {
+      return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 401 });
+    }
+    
+    // Process each event
     for (const event of body.events) {
-      if (event.type === 'message' && event.message.type === 'text' && event.message.text) {
-        await handleTextMessage(event, env);
+      if (event.type === 'message' && event.message.type === 'text') {
+        const messageText = event.message.text || '';
+        const userId = event.source.userId;
+        
+        // Get user name
+        const userName = await getUserProfile(userId, store.lineAccessToken);
+        
+        // Check danger words
+        const hasDanger = await hasDangerWords(env.DB, messageText, store.id);
+        
+        // Extract tags
+        const tags = extractTags(messageText);
+        
+        // Generate AI analysis
+        const aiSummary = generateAISummary(messageText);
+        const aiResponse = generateAIResponse(messageText, store.businessHours);
+        
+        // Determine if auto reply
+        const canAutoReply = shouldAutoReply(messageText) && !hasDanger && store.autoReplyEnabled;
+        
+        // Create thread ID
+        const threadId = `${event.timestamp}_${Math.random().toString(36).substring(2, 11)}`;
+        
+        // Save to database
+        await env.DB
+          .prepare(`
+            INSERT INTO threads (
+              id, store_id, channel, user_name, user_id, status, tags,
+              last_message, ai_summary, ai_intent, ai_response,
+              has_danger_word, is_read, created_at, updated_at, received_at
+            )
+            VALUES (?, ?, 'LINE', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+          `)
+          .bind(
+            threadId,
+            store.id,
+            userName,
+            userId,
+            canAutoReply ? 'completed' : (hasDanger ? 'review' : 'unhandled'),
+            JSON.stringify(tags),
+            messageText,
+            aiSummary,
+            aiSummary,
+            aiResponse,
+            hasDanger ? 1 : 0,
+            Math.floor(event.timestamp / 1000),
+            Math.floor(event.timestamp / 1000),
+            Math.floor(event.timestamp / 1000)
+          )
+          .run();
+        
+        // Save message
+        await env.DB
+          .prepare(`
+            INSERT INTO messages (
+              id, thread_id, store_id, sender, message, timestamp
+            )
+            VALUES (?, ?, ?, 'user', ?, ?)
+          `)
+          .bind(
+            event.message.id,
+            threadId,
+            store.id,
+            messageText,
+            Math.floor(event.timestamp / 1000)
+          )
+          .run();
+        
+        // Auto reply if applicable
+        if (canAutoReply) {
+          await replyMessage(event.replyToken, aiResponse, store.lineAccessToken);
+          
+          // Save bot reply
+          await env.DB
+            .prepare(`
+              INSERT INTO messages (
+                id, thread_id, store_id, sender, message, timestamp
+              )
+              VALUES (?, ?, ?, 'bot', ?, ?)
+            `)
+            .bind(
+              `${event.message.id}_reply`,
+              threadId,
+              store.id,
+              aiResponse,
+              Math.floor(Date.now() / 1000)
+            )
+            .run();
+        }
       }
     }
     
@@ -204,108 +322,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     });
   } catch (error) {
     console.error('Webhook error:', error);
-    return new Response(JSON.stringify({ error: 'Internal error' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-};
-
-// Handle text message
-async function handleTextMessage(event: LINEMessageEvent, env: Env) {
-  const messageText = event.message.text || '';
-  const userId = event.source.userId;
-  const timestamp = Math.floor(event.timestamp / 1000);
-  
-  // Get user profile
-  const userName = await getUserProfile(userId, env.LINE_CHANNEL_ACCESS_TOKEN);
-  
-  // Generate AI analysis
-  const tags = extractTags(messageText);
-  const summary = generateSummary(messageText);
-  const intent = generateIntent(messageText);
-  const response = generateResponse(messageText);
-  const isDangerous = hasDangerWords(messageText);
-  
-  // Determine status
-  const status = isDangerous ? 'review' : 'unhandled';
-  
-  // Create thread ID
-  const threadId = generateId();
-  
-  // Save to database
-  const now = Math.floor(Date.now() / 1000);
-  
-  // Insert thread
-  await env.DB.prepare(`
-    INSERT INTO threads (
-      id, channel, user_name, user_id, status, tags, last_message,
-      ai_summary, ai_intent, ai_response, has_danger_word, is_read,
-      google_rating, google_review_comment, created_at, updated_at, received_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    threadId,
-    'LINE',
-    userName,
-    userId,
-    status,
-    JSON.stringify(tags),
-    messageText,
-    summary,
-    intent,
-    response,
-    isDangerous ? 1 : 0,
-    0,
-    null,
-    null,
-    now,
-    now,
-    timestamp
-  ).run();
-  
-  // Insert user message
-  await env.DB.prepare(`
-    INSERT INTO messages (id, thread_id, sender, content, created_at)
-    VALUES (?, ?, ?, ?, ?)
-  `).bind(
-    generateId(),
-    threadId,
-    'user',
-    messageText,
-    timestamp
-  ).run();
-  
-  // Send reply if not dangerous
-  if (response && !isDangerous) {
-    const replied = await replyMessage(event.replyToken, response, env.LINE_CHANNEL_ACCESS_TOKEN);
-    
-    if (replied) {
-      // Save AI response to messages
-      await env.DB.prepare(`
-        INSERT INTO messages (id, thread_id, sender, content, created_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).bind(
-        generateId(),
-        threadId,
-        'ai',
-        response,
-        now
-      ).run();
-      
-      // Update thread to completed
-      await env.DB.prepare(`
-        UPDATE threads SET status = 'completed', updated_at = ? WHERE id = ?
-      `).bind(now, threadId).run();
-    }
+    return new Response(
+      JSON.stringify({ error: 'Internal server error' }),
+      { status: 500 }
+    );
   }
 }
-
-// GET handler (for verification)
-export const onRequestGet: PagesFunction = async () => {
-  return new Response(JSON.stringify({
-    status: 'ok',
-    message: 'LINE Webhook endpoint with D1',
-  }), {
-    headers: { 'Content-Type': 'application/json' },
-  });
-};
