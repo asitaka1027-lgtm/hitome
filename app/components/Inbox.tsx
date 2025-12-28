@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { Thread, ThreadStatus, ChannelType, StoreSettings, KPIMetrics } from '../types';
-import { getThreads, saveThreads, getSettings, calculateMetrics } from '../lib/storage';
+import { getSettings, calculateMetrics } from '../lib/storage';
+import { fetchThreads, startThreadPolling } from '../lib/api-client';
 import { generateDemoLINEThread, generateDemoGoogleReview } from '../lib/ai-stub';
 import KPIChips from '../components/KPIChips';
 import SegmentControl from '../components/SegmentControl';
@@ -28,18 +29,48 @@ export default function Inbox({ onThreadSelect, onSettingsClick }: InboxProps) {
   const [filterChannel, setFilterChannel] = useState<'all' | ChannelType>('all');
   const [activeTab, setActiveTab] = useState<ThreadStatus>('unhandled');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Load data
+  // Load data from D1 database
   useEffect(() => {
     const loadedSettings = getSettings();
-    const loadedThreads = getThreads();
     setSettings(loadedSettings);
-    setThreads(loadedThreads);
-    
-    if (loadedSettings) {
-      const calculatedMetrics = calculateMetrics(loadedThreads, loadedSettings);
-      setMetrics(calculatedMetrics);
-    }
+
+    // Fetch threads from D1
+    const loadThreads = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const fetchedThreads = await fetchThreads();
+        setThreads(fetchedThreads);
+        
+        if (loadedSettings) {
+          const calculatedMetrics = calculateMetrics(fetchedThreads, loadedSettings);
+          setMetrics(calculatedMetrics);
+        }
+      } catch (err) {
+        console.error('Failed to load threads:', err);
+        setError('データの読み込みに失敗しました');
+        setToast({ message: 'データの読み込みに失敗しました', type: 'error' });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadThreads();
+
+    // Start polling for real-time updates (every 10 seconds)
+    const stopPolling = startThreadPolling((updatedThreads) => {
+      setThreads(updatedThreads);
+      if (loadedSettings) {
+        const calculatedMetrics = calculateMetrics(updatedThreads, loadedSettings);
+        setMetrics(calculatedMetrics);
+      }
+    }, 10000);
+
+    // Cleanup polling on unmount
+    return () => stopPolling();
   }, []);
 
   // Filter threads
@@ -63,66 +94,44 @@ export default function Inbox({ onThreadSelect, onSettingsClick }: InboxProps) {
     return true;
   });
 
-  // Simulate new LINE message
+  // Simulate new LINE message (Demo only - for testing without real LINE)
   const handleSimulateLINE = () => {
     if (!settings) return;
 
-    const newMessages = [
-      { text: '今日の18時に2名で予約できますか？', name: '新規 太郎' },
-      { text: '駐車場はありますか？', name: '山田 花子' },
-      { text: 'メニューの詳細を教えてください', name: '鈴木 次郎' },
-    ];
-
-    const randomMsg = newMessages[Math.floor(Math.random() * newMessages.length)];
-    const newThread = generateDemoLINEThread(randomMsg.text, randomMsg.name, settings, 1);
-
-    const updatedThreads = [newThread, ...threads];
-    setThreads(updatedThreads);
-    saveThreads(updatedThreads);
-
-    const newMetrics = calculateMetrics(updatedThreads, settings);
-    setMetrics(newMetrics);
-
-    setToast({ message: '新しいLINEメッセージを受信しました', type: 'success' });
+    setToast({ 
+      message: 'デモモードは無効です。実際のLINEメッセージをお送りください。', 
+      type: 'error' 
+    });
+    
+    // Note: In production, new messages come from LINE Webhook automatically
+    // This demo button is disabled when D1 integration is active
   };
 
-  // Simulate new Google review
+  // Simulate new Google review (Demo only - for testing without real Google)
   const handleSimulateGoogle = () => {
     if (!settings) return;
 
-    const newReviews = [
-      { rating: 5, comment: '素晴らしいサービスでした！また利用します。', name: '新規 一郎' },
-      { rating: 4, comment: '良かったです。次回も期待しています。', name: '佐々木 美咲' },
-      { rating: 2, comment: '期待していたほどではありませんでした。', name: '田中 健太' },
-    ];
-
-    const randomReview = newReviews[Math.floor(Math.random() * newReviews.length)];
-    const newThread = generateDemoGoogleReview(
-      randomReview.rating,
-      randomReview.comment,
-      randomReview.name,
-      settings,
-      1
-    );
-
-    const updatedThreads = [newThread, ...threads];
-    setThreads(updatedThreads);
-    saveThreads(updatedThreads);
-
-    const newMetrics = calculateMetrics(updatedThreads, settings);
-    setMetrics(newMetrics);
-
-    setToast({ message: '新しいGoogle口コミを受信しました', type: 'success' });
+    setToast({ 
+      message: 'デモモードは無効です。実際のGoogle口コミをお待ちください。', 
+      type: 'error' 
+    });
+    
+    // Note: In production, new reviews come from Google Business Profile API
+    // This demo button is disabled when D1 integration is active
   };
 
-  const handleThreadClick = (thread: Thread) => {
-    // Mark as read
+  const handleThreadClick = async (thread: Thread) => {
+    // Mark as read in local state immediately for responsiveness
     const updatedThreads = threads.map((t) =>
       t.id === thread.id ? { ...t, isRead: true } : t
     );
     setThreads(updatedThreads);
-    saveThreads(updatedThreads);
-    onThreadSelect(thread);
+    
+    // Navigate to detail
+    onThreadSelect({ ...thread, isRead: true });
+    
+    // TODO: Update isRead status in D1 database
+    // This will be implemented when we add the update endpoint
   };
 
   const getTabCount = (status: ThreadStatus): number => {
@@ -249,10 +258,29 @@ export default function Inbox({ onThreadSelect, onSettingsClick }: InboxProps) {
 
       {/* Thread List */}
       <div className="container-mobile pt-4">
-        {filteredThreads.length === 0 ? (
+        {isLoading ? (
+          <div className="text-center py-12">
+            <div className="text-4xl mb-3 animate-pulse">⏳</div>
+            <div className="text-muted-gray">読み込み中...</div>
+          </div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <div className="text-4xl mb-3">⚠️</div>
+            <div className="text-red-500 mb-4">{error}</div>
+            <button
+              onClick={() => window.location.reload()}
+              className="btn-primary"
+            >
+              再読み込み
+            </button>
+          </div>
+        ) : filteredThreads.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-4xl mb-3">📭</div>
             <div className="text-muted-gray">該当するメッセージはありません</div>
+            <div className="text-sm text-muted-gray mt-2">
+              LINEでメッセージを送信すると、ここに表示されます
+            </div>
           </div>
         ) : (
           filteredThreads.map((thread) => (
@@ -261,15 +289,28 @@ export default function Inbox({ onThreadSelect, onSettingsClick }: InboxProps) {
         )}
       </div>
 
-      {/* Demo Buttons */}
+      {/* Demo Buttons - Disabled in production */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-border-light py-3 z-20">
-        <div className="container-mobile flex gap-2">
-          <button onClick={handleSimulateLINE} className="btn-secondary flex-1 text-sm">
-            📱 LINE受信
-          </button>
-          <button onClick={handleSimulateGoogle} className="btn-secondary flex-1 text-sm">
-            ⭐ 口コミ受信
-          </button>
+        <div className="container-mobile">
+          <div className="text-xs text-center text-muted-gray mb-2">
+            💡 実際のLINEメッセージを送信してテストしてください
+          </div>
+          <div className="flex gap-2">
+            <button 
+              onClick={handleSimulateLINE} 
+              className="btn-secondary flex-1 text-sm opacity-50 cursor-not-allowed"
+              disabled
+            >
+              📱 LINE受信（無効）
+            </button>
+            <button 
+              onClick={handleSimulateGoogle} 
+              className="btn-secondary flex-1 text-sm opacity-50 cursor-not-allowed"
+              disabled
+            >
+              ⭐ 口コミ受信（無効）
+            </button>
+          </div>
         </div>
       </div>
     </div>

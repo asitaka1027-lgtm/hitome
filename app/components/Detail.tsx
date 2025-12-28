@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Thread } from '../types';
-import { getThreads, saveThreads, getSettings } from '../lib/storage';
+import { sendManualReply, updateThreadStatus } from '../lib/api-client';
 import Toast from '../components/Toast';
 
 interface DetailProps {
@@ -15,6 +15,7 @@ export default function Detail({ thread, onBack, onUpdate }: DetailProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedResponse, setEditedResponse] = useState(thread.aiResponse);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
   const getChannelIcon = () => {
     if (thread.channel === 'LINE') {
@@ -33,61 +34,82 @@ export default function Detail({ thread, onBack, onUpdate }: DetailProps) {
   };
 
   const getElapsedTime = () => {
-    const now = new Date();
-    const elapsed = Math.floor((now.getTime() - thread.timestamp.getTime()) / 60000);
+    const now = Date.now();
+    const elapsed = Math.floor((now - thread.receivedAt) / 60000);
     
     if (elapsed < 60) return `${elapsed}分前`;
     if (elapsed < 1440) return `${Math.floor(elapsed / 60)}時間前`;
     return `${Math.floor(elapsed / 1440)}日前`;
   };
 
-  const handleSend = () => {
-    // Update thread to completed
-    const threads = getThreads();
-    const updatedThreads = threads.map((t) =>
-      t.id === thread.id ? { ...t, status: 'completed' as const, timestamp: new Date() } : t
-    );
-    saveThreads(updatedThreads);
+  const handleSend = async () => {
+    try {
+      setIsSending(true);
+      
+      // Send reply via API
+      await sendManualReply(thread.id, thread.aiResponse);
+      
+      // Update status to completed
+      await updateThreadStatus(thread.id, 'completed');
 
-    setToast({ message: '送信しました！', type: 'success' });
-    setTimeout(() => {
-      onUpdate();
-      onBack();
-    }, 1000);
+      setToast({ message: '送信しました！', type: 'success' });
+      setTimeout(() => {
+        onUpdate();
+        onBack();
+      }, 1000);
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      setToast({ message: '送信に失敗しました', type: 'error' });
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleEditAndSend = () => {
     setIsEditing(true);
   };
 
-  const handleSaveEdit = () => {
-    const threads = getThreads();
-    const updatedThreads = threads.map((t) =>
-      t.id === thread.id
-        ? { ...t, aiResponse: editedResponse, status: 'completed' as const, timestamp: new Date() }
-        : t
-    );
-    saveThreads(updatedThreads);
+  const handleSaveEdit = async () => {
+    try {
+      setIsSending(true);
+      
+      // Send edited reply via API
+      await sendManualReply(thread.id, editedResponse);
+      
+      // Update status to completed
+      await updateThreadStatus(thread.id, 'completed');
 
-    setToast({ message: '送信しました！', type: 'success' });
-    setTimeout(() => {
-      onUpdate();
-      onBack();
-    }, 1000);
+      setToast({ message: '送信しました！', type: 'success' });
+      setTimeout(() => {
+        onUpdate();
+        onBack();
+      }, 1000);
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      setToast({ message: '送信に失敗しました', type: 'error' });
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  const handleMoveToReview = () => {
-    const threads = getThreads();
-    const updatedThreads = threads.map((t) =>
-      t.id === thread.id ? { ...t, status: 'review' as const } : t
-    );
-    saveThreads(updatedThreads);
+  const handleMoveToReview = async () => {
+    try {
+      setIsSending(true);
+      
+      // Update status to review
+      await updateThreadStatus(thread.id, 'review');
 
-    setToast({ message: '要確認に移動しました', type: 'success' });
-    setTimeout(() => {
-      onUpdate();
-      onBack();
-    }, 1000);
+      setToast({ message: '要確認に移動しました', type: 'success' });
+      setTimeout(() => {
+        onUpdate();
+        onBack();
+      }, 1000);
+    } catch (error) {
+      console.error('Failed to update status:', error);
+      setToast({ message: '更新に失敗しました', type: 'error' });
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const renderGoogleStars = (rating: number) => {
