@@ -1,0 +1,9 @@
+name = "hitome"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "./out"
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "hitome-db"
+database_id = "fd37bae1-680e-4c9f-9dff-60882ec58925"
