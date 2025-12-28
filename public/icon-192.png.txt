@@ -1,0 +1,2 @@
+Placeholder for icon-192.png
+Simple colored square icon would be created here in a real deployment
