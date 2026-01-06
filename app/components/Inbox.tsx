@@ -13,9 +13,14 @@ import Toast from '../components/Toast';
 interface InboxProps {
   onThreadSelect: (thread: Thread) => void;
   onSettingsClick: () => void;
+  currentUser?: {
+    name: string;
+    stores: Array<{ id: string; name: string; role: string }>;
+  } | null;
+  onLogout?: () => void;
 }
 
-export default function Inbox({ onThreadSelect, onSettingsClick }: InboxProps) {
+export default function Inbox({ onThreadSelect, onSettingsClick, currentUser, onLogout }: InboxProps) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [settings, setSettings] = useState<StoreSettings | null>(null);
   const [metrics, setMetrics] = useState<KPIMetrics>({
@@ -139,20 +144,28 @@ export default function Inbox({ onThreadSelect, onSettingsClick }: InboxProps) {
   };
 
   return (
-    <div className="min-h-screen bg-bg-base pb-20">
+    <div className="min-h-screen bg-gray-50 pb-20">
       {/* Toast */}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* Header */}
-      <div className="bg-white border-b border-border-light sticky top-0 z-10">
+      <div className="bg-gradient-to-r from-blue-500 to-blue-600 sticky top-0 z-10 shadow-md">
         <div className="container-mobile py-4">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold text-navy">hitome</h1>
+            <div>
+              <h1 className="text-2xl font-bold text-white">hitome</h1>
+              {currentUser && currentUser.stores.length > 0 && (
+                <p className="text-sm text-white/80 mt-1">{currentUser.stores[0].name}</p>
+              )}
+            </div>
             <button
               onClick={onSettingsClick}
-              className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-muted-gray active:bg-gray-200"
+              className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white active:bg-white/30 transition-colors"
             >
-              ⚙️
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
             </button>
           </div>
 
@@ -160,98 +173,83 @@ export default function Inbox({ onThreadSelect, onSettingsClick }: InboxProps) {
           <div className="mb-4">
             <KPIChips metrics={metrics} />
           </div>
+        </div>
+      </div>
 
-          {/* Alert Segment */}
-          {settings && (
-            <div className="flex items-center justify-center mb-4">
-              <SegmentControl
-                selected={settings.alertSegment}
-                onChange={(segment) => {
-                  const updated = { ...settings, alertSegment: segment };
-                  setSettings(updated);
-                  // Note: This doesn't save immediately, just for demo
-                }}
-              />
-            </div>
-          )}
+      {/* Content Area */}
+      <div className="container-mobile pt-4">
+        {/* Search */}
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="🔍 検索..."
+          className="w-full px-4 py-3 bg-white rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all mb-3"
+        />
 
-          {/* Search */}
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="検索..."
-            className="input-field mb-3"
-          />
-
-          {/* Filter */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setFilterChannel('all')}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-                filterChannel === 'all'
-                  ? 'bg-primary text-white'
-                  : 'bg-gray-100 text-muted-gray'
-              }`}
-            >
-              すべて
-            </button>
-            <button
-              onClick={() => setFilterChannel('LINE')}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-                filterChannel === 'LINE'
-                  ? 'bg-green-500 text-white'
-                  : 'bg-gray-100 text-muted-gray'
-              }`}
-            >
-              LINE
-            </button>
-            <button
-              onClick={() => setFilterChannel('GOOGLE')}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-                filterChannel === 'GOOGLE'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-muted-gray'
-              }`}
-            >
-              口コミ
-            </button>
-          </div>
+        {/* Filter */}
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setFilterChannel('all')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+              filterChannel === 'all'
+                ? 'bg-primary text-white'
+                : 'bg-gray-100 text-muted-gray'
+            }`}
+          >
+            すべて
+          </button>
+          <button
+            onClick={() => setFilterChannel('LINE')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+              filterChannel === 'LINE'
+                ? 'bg-green-500 text-white'
+                : 'bg-gray-100 text-muted-gray'
+            }`}
+          >
+            LINE
+          </button>
+          <button
+            onClick={() => setFilterChannel('GOOGLE')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+              filterChannel === 'GOOGLE'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-100 text-muted-gray'
+            }`}
+          >
+            口コミ
+          </button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="bg-white border-b border-border-light sticky top-[280px] z-10">
-        <div className="container-mobile flex">
+      <div className="bg-white sticky top-[340px] z-10 shadow-sm">
+        <div className="container-mobile flex border-b border-gray-200">
           <button
             onClick={() => setActiveTab('unhandled')}
-            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-all ${
+            className={`flex-1 py-4 text-sm font-bold transition-all relative ${
               activeTab === 'unhandled'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-gray'
+                ? 'text-blue-600'
+                : 'text-gray-500'
             }`}
           >
-            未対応 ({getTabCount('unhandled')})
-          </button>
-          <button
-            onClick={() => setActiveTab('review')}
-            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-all ${
-              activeTab === 'review'
-                ? 'border-red-500 text-red-500'
-                : 'border-transparent text-muted-gray'
-            }`}
-          >
-            要確認 ({getTabCount('review')})
+            要対応
+            {activeTab === 'unhandled' && (
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-t-full" />
+            )}
           </button>
           <button
             onClick={() => setActiveTab('completed')}
-            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-all ${
+            className={`flex-1 py-4 text-sm font-bold transition-all relative ${
               activeTab === 'completed'
-                ? 'border-gray-500 text-gray-700'
-                : 'border-transparent text-muted-gray'
+                ? 'text-blue-600'
+                : 'text-gray-500'
             }`}
           >
-            完了 ({getTabCount('completed')})
+            完了済み
+            {activeTab === 'completed' && (
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-t-full" />
+            )}
           </button>
         </div>
       </div>
