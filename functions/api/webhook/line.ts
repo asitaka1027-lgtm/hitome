@@ -1,7 +1,7 @@
 // Cloudflare Pages Function for LINE Webhook with Multi-Tenancy Support
 // https://hitome.pages.dev/api/webhook/line
 
-import { getStore } from '../../../app/lib/auth';
+import { getStore } from '../../lib/auth';
 
 interface Env {
   DB: D1Database;

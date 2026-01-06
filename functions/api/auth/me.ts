@@ -8,7 +8,7 @@ import {
   getUser,
   getUserStores,
   parseSessionCookie,
-} from '../../../app/lib/auth';
+} from '../../lib/auth';
 
 interface Env {
   DB: D1Database;

@@ -1,5 +1,5 @@
 // API to get/update messages for a thread with Multi-Tenancy Support
-import { getSession, hasStoreAccess, parseSessionCookie } from '../../../app/lib/auth';
+import { getSession, hasStoreAccess, parseSessionCookie } from '../../lib/auth';
 
 interface Env {
   DB: D1Database;

@@ -3,7 +3,7 @@
  * Deletes session and clears cookie
  */
 
-import { deleteSession, parseSessionCookie } from '../../../app/lib/auth';
+import { deleteSession, parseSessionCookie } from '../../lib/auth';
 
 interface Env {
   DB: D1Database;

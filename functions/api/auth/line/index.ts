@@ -1,41 +1,28 @@
-/**
- * LINE Login Authentication Endpoint
- * Redirects user to LINE Login page
- */
+// LINE Login エンドポイント
+// Redirect to LINE OAuth
 
 interface Env {
   LINE_LOGIN_CHANNEL_ID: string;
-  LINE_LOGIN_CHANNEL_SECRET: string;
 }
 
-export async function onRequestGet(context: { request: Request; env: Env }) {
-  const { request, env } = context;
-  const url = new URL(request.url);
-  
+export const onRequestGet: PagesFunction<Env> = async (context) => {
+  const { env, request } = context;
+
+  if (!env.LINE_LOGIN_CHANNEL_ID) {
+    return new Response('Not configured', { status: 500 });
+  }
+
   // Generate state for CSRF protection
   const state = crypto.randomUUID();
-  
-  // Generate nonce
-  const nonce = crypto.randomUUID();
-  
-  // Redirect URL
-  const redirectUri = `${url.origin}/api/auth/line/callback`;
-  
-  // Build LINE Login URL
+
+  // Build LINE OAuth URL
   const lineAuthUrl = new URL('https://access.line.me/oauth2/v2.1/authorize');
   lineAuthUrl.searchParams.set('response_type', 'code');
   lineAuthUrl.searchParams.set('client_id', env.LINE_LOGIN_CHANNEL_ID);
-  lineAuthUrl.searchParams.set('redirect_uri', redirectUri);
+  lineAuthUrl.searchParams.set('redirect_uri', 'https://hitome.pages.dev/api/auth/line/callback');
   lineAuthUrl.searchParams.set('state', state);
-  lineAuthUrl.searchParams.set('scope', 'profile openid email');
-  lineAuthUrl.searchParams.set('nonce', nonce);
-  
-  // Store state in cookie for verification
-  const response = Response.redirect(lineAuthUrl.toString(), 302);
-  response.headers.set(
-    'Set-Cookie',
-    `line_auth_state=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`
-  );
-  
-  return response;
-}
+  lineAuthUrl.searchParams.set('scope', 'profile openid');
+
+  // Redirect to LINE
+  return Response.redirect(lineAuthUrl.toString(), 302);
+};

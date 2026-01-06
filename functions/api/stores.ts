@@ -10,7 +10,7 @@ import {
   hasStoreAccess,
   parseSessionCookie,
   updateSessionStore,
-} from '../../../app/lib/auth';
+} from '../lib/auth';
 
 interface Env {
   DB: D1Database;

@@ -1,5 +1,5 @@
 // API to get threads from D1 with Multi-Tenancy Support
-import { getSession, parseSessionCookie } from '../../app/lib/auth';
+import { getSession, parseSessionCookie } from '../lib/auth';
 
 interface Env {
   DB: D1Database;

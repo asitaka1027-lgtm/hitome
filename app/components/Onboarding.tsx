@@ -7,7 +7,7 @@ import { initializeDemoData } from '../lib/ai-stub';
 import Toast from '../components/Toast';
 
 interface OnboardingProps {
-  onComplete: () => void;
+  onComplete: (storeData: any) => void;
 }
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
@@ -52,27 +52,18 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   };
 
   const handleComplete = () => {
-    const settings: StoreSettings = {
-      storeName: storeName.trim(),
-      businessHours: { start: startTime, end: endTime },
+    const storeData = {
+      name: storeName.trim(),
+      business_hours: `${startTime}-${endTime}`,
       tone,
-      industry,
-      alertSegment,
-      autoReplyHighRating,
-      lineConnected,
-      googleConnected,
+      category: industry,
+      alert_segment: alertSegment,
+      auto_reply_enabled: autoReplyHighRating,
     };
-
-    saveSettings(settings);
-    setOnboardingDone();
-
-    // Initialize demo data
-    const demoThreads = initializeDemoData(settings);
-    saveThreads(demoThreads);
 
     setToast({ message: 'セットアップ完了！', type: 'success' });
     setTimeout(() => {
-      onComplete();
+      onComplete(storeData);
     }, 1000);
   };
 

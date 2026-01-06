@@ -9,7 +9,7 @@ import {
   createSessionCookie,
   generateId,
   getUser,
-} from '../../../../app/lib/auth';
+} from '../../../lib/auth';
 
 interface Env {
   DB: D1Database;
