@@ -57,9 +57,16 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
   
   try {
     const body = await request.json();
-    const { name, businessHours, tone, category, alertSegment } = body;
+    const { 
+      name, 
+      business_hours, 
+      tone, 
+      category, 
+      alert_segment,
+      auto_reply_enabled 
+    } = body;
     
-    if (!name || !businessHours) {
+    if (!name || !business_hours) {
       return new Response(
         JSON.stringify({ error: 'Name and business hours are required' }),
         { status: 400 }
@@ -76,16 +83,17 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
           id, name, owner_id, business_hours, tone, category, alert_segment,
           auto_reply_enabled, is_active, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       `)
       .bind(
         storeId,
         name,
         session.userId,
-        businessHours,
-        tone || 'polite',
+        business_hours,
+        tone || 'standard',
         category || 'salon',
-        alertSegment || 'standard',
+        alert_segment || 'standard',
+        auto_reply_enabled ? 1 : 0,
         now,
         now
       )
@@ -104,7 +112,14 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
     await updateSessionStore(env.DB, sessionId, storeId);
     
     return new Response(
-      JSON.stringify({ success: true, storeId }),
+      JSON.stringify({ 
+        success: true, 
+        store: {
+          id: storeId,
+          name: name,
+          role: 'owner'
+        }
+      }),
       { headers: { 'Content-Type': 'application/json' } }
     );
   } catch (error) {

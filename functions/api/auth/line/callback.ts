@@ -32,6 +32,11 @@ export async function onRequestGet(context: { request: Request; env: Env }) {
   // In production, implement proper state storage (D1 or KV)
   
   try {
+    // Debug: Check env variables
+    console.log('LINE_LOGIN_CHANNEL_ID:', env.LINE_LOGIN_CHANNEL_ID ? 'Set' : 'Missing');
+    console.log('LINE_LOGIN_CHANNEL_SECRET:', env.LINE_LOGIN_CHANNEL_SECRET ? 'Set' : 'Missing');
+    console.log('Redirect URI:', `${url.origin}/api/auth/line/callback`);
+    
     // Exchange code for access token
     const tokenResponse = await fetch('https://api.line.me/oauth2/v2.1/token', {
       method: 'POST',
@@ -48,10 +53,13 @@ export async function onRequestGet(context: { request: Request; env: Env }) {
     });
     
     if (!tokenResponse.ok) {
-      throw new Error('Failed to exchange token');
+      const errorData = await tokenResponse.text();
+      console.error('Token exchange failed:', tokenResponse.status, errorData);
+      throw new Error(`Failed to exchange token: ${tokenResponse.status} - ${errorData}`);
     }
     
     const tokens = await tokenResponse.json();
+    console.log('Token exchange successful');
     
     // Get user profile
     const profileResponse = await fetch('https://api.line.me/v2/profile', {
@@ -61,10 +69,13 @@ export async function onRequestGet(context: { request: Request; env: Env }) {
     });
     
     if (!profileResponse.ok) {
-      throw new Error('Failed to get profile');
+      const errorData = await profileResponse.text();
+      console.error('Profile fetch failed:', profileResponse.status, errorData);
+      throw new Error(`Failed to get profile: ${profileResponse.status}`);
     }
     
     const profile = await profileResponse.json();
+    console.log('Profile fetched:', profile.userId);
     
     // Check if user exists
     const existingUser = await env.DB
