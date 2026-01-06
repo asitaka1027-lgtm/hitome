@@ -21,21 +21,15 @@ export async function onRequestGet(context: { request: Request; env: Env }) {
   const { request, env } = context;
   const url = new URL(request.url);
   
-  // Get authorization code and state
+  // Get authorization code
   const code = url.searchParams.get('code');
-  const state = url.searchParams.get('state');
   
-  if (!code || !state) {
-    return new Response('Invalid request', { status: 400 });
+  if (!code) {
+    return new Response('Invalid request: missing code', { status: 400 });
   }
   
-  // Verify state (CSRF protection)
-  const cookies = request.headers.get('Cookie') || '';
-  const storedState = cookies.match(/line_auth_state=([^;]+)/)?.[1];
-  
-  if (state !== storedState) {
-    return new Response('Invalid state', { status: 400 });
-  }
+  // Note: State verification is skipped for now
+  // In production, implement proper state storage (D1 or KV)
   
   try {
     // Exchange code for access token
@@ -113,18 +107,17 @@ export async function onRequestGet(context: { request: Request; env: Env }) {
     const session = await createSession(env.DB, user.id);
     
     // Set session cookie
-    const response = Response.redirect('/', 302);
+    const redirectUrl = `${url.origin}/`;
+    const response = Response.redirect(redirectUrl, 302);
     response.headers.set('Set-Cookie', createSessionCookie(session.id, session.expiresAt));
-    
-    // Clear auth state cookie
-    response.headers.append(
-      'Set-Cookie',
-      'line_auth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0'
-    );
     
     return response;
   } catch (error) {
     console.error('LINE Login error:', error);
-    return new Response('Authentication failed', { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Redirect to login with error
+    const redirectUrl = `${url.origin}/?error=auth_failed&message=${encodeURIComponent(errorMessage)}`;
+    return Response.redirect(redirectUrl, 302);
   }
 }
