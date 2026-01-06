@@ -106,12 +106,15 @@ export async function onRequestGet(context: { request: Request; env: Env }) {
     // Create session
     const session = await createSession(env.DB, user.id);
     
-    // Set session cookie
+    // Create redirect response with session cookie
     const redirectUrl = `${url.origin}/`;
-    const response = Response.redirect(redirectUrl, 302);
-    response.headers.set('Set-Cookie', createSessionCookie(session.id, session.expiresAt));
-    
-    return response;
+    return new Response(null, {
+      status: 302,
+      headers: {
+        'Location': redirectUrl,
+        'Set-Cookie': createSessionCookie(session.id, session.expiresAt),
+      },
+    });
   } catch (error) {
     console.error('LINE Login error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
