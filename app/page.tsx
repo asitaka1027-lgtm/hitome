@@ -38,11 +38,17 @@ export default function Home() {
       const response = await fetch('/api/auth/me');
       if (response.ok) {
         const data = await response.json();
-        if (data.user) {
-          setUser(data.user);
+        if (data.user && data.authenticated) {
+          // Combine user data with stores
+          const userData = {
+            ...data.user,
+            stores: data.stores || [],
+            currentStoreId: data.currentStoreId,
+          };
+          setUser(userData);
           
           // Check if user has stores
-          if (data.user.stores && data.user.stores.length > 0) {
+          if (data.stores && data.stores.length > 0) {
             setScreen('inbox');
           } else {
             // New user, needs onboarding

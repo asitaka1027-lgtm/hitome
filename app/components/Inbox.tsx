@@ -154,7 +154,7 @@ export default function Inbox({ onThreadSelect, onSettingsClick, currentUser, on
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-2xl font-bold text-white">hitome</h1>
-              {currentUser && currentUser.stores.length > 0 && (
+              {currentUser?.stores?.[0]?.name && (
                 <p className="text-sm text-white/80 mt-1">{currentUser.stores[0].name}</p>
               )}
             </div>
